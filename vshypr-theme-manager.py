@@ -402,26 +402,64 @@ bell_border_color     {ctx['red']}
 
 
 def apply_waybar(ctx: dict):
-    """Inyecta variables de color en style.css de Waybar vía marcadores CSS."""
-    block = f"""@define-color base     {ctx['bg']};
-@define-color mantle   {ctx['surface3']};
-@define-color crust    {ctx['bg_alt']};
-@define-color surface0 {ctx['surface']};
-@define-color surface1 {ctx['surface2']};
-@define-color overlay0 {ctx['overlay']};
-@define-color text     {ctx['fg']};
-@define-color subtext0 {ctx['fg_dim']};
-@define-color blue     {ctx['accent']};
-@define-color mauve    {ctx['mauve']};
-@define-color red      {ctx['red']};
-@define-color green    {ctx['teal']};
-@define-color yellow   {ctx['yellow']};
-@define-color peach    {ctx['orange']};"""
+    """Actualiza variables de color en style.css de Waybar.
 
-    inject_css(WAYBAR_STYLE, block)
+    Si vsWaybar Studio controla el archivo (detectado por /* vswaybar:modpad */),
+    actualiza los @define-color en place — sin bloques extra ni duplicados.
+    Si no existe el archivo o no hay tokens, usa inject_css como fallback.
+    """
+    if not WAYBAR_STYLE.exists():
+        print(f"  [warn] No encontrado: {WAYBAR_STYLE}")
+        return
 
-    # Bloque de módulos: fondo y borde de la barra
-    modules_block = f""".modules-left,
+    tokens = {
+        "base":     ctx['bg'],
+        "mantle":   ctx['surface3'],
+        "crust":    ctx['bg_alt'],
+        "surface0": ctx['surface'],
+        "surface1": ctx['surface2'],
+        "overlay0": ctx['overlay'],
+        "text":     ctx['fg'],
+        "subtext0": ctx['fg_dim'],
+        "blue":     ctx['accent'],
+        "mauve":    ctx['mauve'],
+        "red":      ctx['red'],
+        "green":    ctx['teal'],
+        "yellow":   ctx['yellow'],
+        "peach":    ctx['orange'],
+    }
+
+    content = WAYBAR_STYLE.read_text()
+    vswaybar_managed = "/* vswaybar:modpad */" in content
+
+    if vswaybar_managed:
+        # Actualizar @define-color en place — sin agregar bloques extra.
+        # Limpia cualquier bloque theme-changer previo (evita duplicados).
+        for tag in ("", " modules", " keyframes"):
+            begin = f"/* theme-changer: begin{tag} */"
+            end   = f"/* theme-changer: end{tag} */"
+            pat   = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.DOTALL)
+            content = pat.sub("", content)
+        # Quitar líneas vacías extra dejadas por la limpieza
+        content = re.sub(r'\n{3,}', '\n\n', content).rstrip() + "\n"
+        # Actualizar cada token existente en place
+        updated = set()
+        for name, val in tokens.items():
+            pat = rf'(@define-color\s+{re.escape(name)}\s+)(#[0-9a-fA-F]{{6}})'
+            if re.search(pat, content):
+                content = re.sub(pat, rf'\g<1>{val}', content)
+                updated.add(name)
+        # Agregar al principio los tokens que no existían
+        missing = [f"@define-color {n} {v};" for n, v in tokens.items() if n not in updated]
+        if missing:
+            content = "\n".join(missing) + "\n" + content
+        WAYBAR_STYLE.write_text(content)
+    else:
+        # Sin vsWaybar Studio: usar inject_css + modules/keyframes completos
+        block = "\n".join(f"@define-color {n} {v};" for n, v in tokens.items())
+        inject_css(WAYBAR_STYLE, block)
+
+        modules_block = f""".modules-left,
 .modules-center,
 .modules-right {{
     background: {ctx['bg_rgba_95']};
@@ -430,15 +468,14 @@ def apply_waybar(ctx: dict):
     border: 2px solid {ctx['surface']};
     min-height: 0;
 }}"""
-    inject_css(WAYBAR_STYLE, modules_block, suffix="modules")
+        inject_css(WAYBAR_STYLE, modules_block, suffix="modules")
 
-    # Bloque de animación del workspace activo
-    keyframes_block = f"""@keyframes ws-active {{
+        keyframes_block = f"""@keyframes ws-active {{
     0%   {{ background-color: {ctx['accent']}; }}
     50%  {{ background-color: {ctx['accent_alt']}; }}
     100% {{ background-color: {ctx['accent']}; }}
 }}"""
-    inject_css(WAYBAR_STYLE, keyframes_block, suffix="keyframes")
+        inject_css(WAYBAR_STYLE, keyframes_block, suffix="keyframes")
 
     subprocess.run(["pkill", "-x", "waybar"], capture_output=True)
     time.sleep(0.4)

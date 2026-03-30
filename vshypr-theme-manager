@@ -12,10 +12,13 @@ import threading, urllib.request
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 
-# Runtime location of the GUI executable (used only for the app logo).
+# Runtime location of the GUI executable.
 _SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
 
-# All user data lives here — themes, templates, assets, backups, state.
+# Datos de sistema instalados por el paquete (AUR/makepkg).
+_SYSTEM_DATA_DIR = "/usr/share/vshypr-theme-manager"
+
+# Datos del usuario — temas, templates, assets, backups, estado.
 _USER_DATA_DIR = os.path.expanduser("~/.config/vshypr-theme-manager")
 
 _TC_PY      = os.path.join(_USER_DATA_DIR, "vshypr-theme-manager.py")
@@ -24,14 +27,44 @@ _TC_THEMES  = os.path.join(_USER_DATA_DIR, "themes")
 _TC_CURRENT = os.path.join(_USER_DATA_DIR, "current-theme.json")
 
 _APP_NAME  = "vsHypr Theme Manager"
-_APP_LOGO  = os.path.join(_SCRIPT_DIR, "vshypr-theme-manager.png")
+# Logo: junto al ejecutable (dev o /usr/bin/), con fallback a pixmaps.
+_APP_LOGO  = next(
+    (p for p in [
+        os.path.join(_SCRIPT_DIR, "vshypr-theme-manager.png"),
+        "/usr/share/pixmaps/vshypr-theme-manager.png",
+    ] if os.path.isfile(p)),
+    None,
+)
 
 _CONF_DIR        = _USER_DATA_DIR
 _F_STATE         = os.path.join(_CONF_DIR, ".tcgui_state.json")
 _F_CONFIG        = os.path.join(_CONF_DIR, "gui-config.json")
 _DEFAULT_WP_DIR  = os.path.expanduser("~/Pictures/wallpapers")
 
-os.makedirs(_CONF_DIR, exist_ok=True)
+
+def _init_user_data():
+    """Primera ejecución: copia datos del sistema a ~/.config/vshypr-theme-manager/.
+
+    En modo desarrollo (_SYSTEM_DATA_DIR no existe) no hace nada — los archivos
+    ya están junto al ejecutable en el repo.
+    """
+    os.makedirs(_USER_DATA_DIR, exist_ok=True)
+    if not os.path.isdir(_SYSTEM_DATA_DIR):
+        return
+    for item in ("vshypr-theme-manager.py", "rofi-picker.sh", "themes", "templates", "assets"):
+        src = os.path.join(_SYSTEM_DATA_DIR, item)
+        dst = os.path.join(_USER_DATA_DIR, item)
+        if not os.path.exists(src):
+            continue
+        if os.path.isdir(src):
+            if not os.path.exists(dst):
+                shutil.copytree(src, dst)
+        else:
+            if not os.path.isfile(dst):
+                shutil.copy2(src, dst)
+
+
+_init_user_data()
 
 # ── persistent state ─────────────────────────────────────────────────────────
 

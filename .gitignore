@@ -1,0 +1,14 @@
+# Runtime data — never commit
+backups/
+current-theme.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude Code local settings
+.claude/
+
+# Dynamic themes (generated at runtime by matugen)
+themes/dynamic-dark/
+themes/dynamic-light/
